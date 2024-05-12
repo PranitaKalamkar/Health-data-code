@@ -1,0 +1,137 @@
+import numpy as np
+import pandas as pd
+# Load the data from Excel sheet file
+health_data = pd.read_excel('Dataset_Pranita_Dessertation.xlsx')
+
+# Display the first few rows of the DataFrame
+health_data.head()
+# Display the DataFrame structure and column names
+print(health_data.info())
+
+import numpy as np
+from sklearn.ensemble import IsolationForest
+
+# Prepare the feature matrix as a numpy array
+X = health_data[['HeartRate', 'BloodPressureSystolic', 'BloodPressureDiastolic', 'GlucoseLevels', 'ActivityCounts']].values
+
+# Create and fit the Isolation Forest model
+iso_forest = IsolationForest(n_estimators=100, contamination=0.1, random_state=42)
+health_data['Anomaly'] = iso_forest.fit_predict(X)
+
+# Identify anomalies
+anomalies = health_data[health_data['Anomaly'] == -1]
+# Basic health metrics analysis
+average_heart_rate = health_data['HeartRate'].mean()
+high_bp_count = health_data[(health_data['BloodPressureSystolic'] > 130) | (health_data['BloodPressureDiastolic'] > 80)].shape[0]
+high_glucose_count = health_data[health_data['GlucoseLevels'] > 100].shape[0]
+
+print(f"Average Heart Rate: {average_heart_rate:.2f}")
+print(f"Count of High Blood Pressure Readings: {high_bp_count}")
+print(f"Count of High Glucose Readings: {high_glucose_count}")
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Visualizing health data distribution
+plt.figure(figsize=(12, 8))
+for i, column in enumerate(['HeartRate', 'BloodPressureSystolic', 'BloodPressureDiastolic', 'GlucoseLevels', 'ActivityCounts'], 1):
+    plt.subplot(2, 3, i)
+    sns.histplot(health_data[column], kde=True)
+    plt.title(f'Distribution of {column}')
+plt.tight_layout()
+plt.show()
+
+# Anomalies visualization
+sns.scatterplot(data=anomalies, x='Age', y='HeartRate', hue='Anomaly', style='Anomaly')
+plt.title('Detected Anomalies in Health Metrics')
+plt.show()
+
+
+
+import numpy as np
+import pandas as pd
+from sklearn.ensemble import IsolationForest, RandomForestClassifier
+from sklearn.manifold import TSNE
+from sklearn.metrics import classification_report, confusion_matrix, balanced_accuracy_score
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.preprocessing import StandardScaler
+from imblearn.over_sampling import SMOTE
+import plotly.express as px
+
+# Assuming 'health_data' DataFrame is already loaded and properly formatted
+
+# Creating the scaler instance
+scaler = StandardScaler()
+
+# Converting the DataFrame to a numpy array and fitting the Isolation Forest model
+X = health_data.values
+iso_forest = IsolationForest(n_estimators=100, contamination=0.05, random_state=42)
+health_data['Anomaly'] = iso_forest.fit_predict(X)
+
+# Scaling data excluding 'Anomaly' column
+health_data_scaled = scaler.fit_transform(health_data.drop('Anomaly', axis=1))
+
+# Applying t-SNE
+tsne = TSNE(n_components=2, random_state=42)
+tsne_results = tsne.fit_transform(health_data_scaled)
+health_data['TSNE-2d-one'] = tsne_results[:,0]
+health_data['TSNE-2d-two'] = tsne_results[:,1]
+
+# Plot using Plotly
+fig = px.scatter(health_data, x='TSNE-2d-one', y='TSNE-2d-two', color='Anomaly',
+                 title="Health Data Anomaly Detection (TSNE)",
+                 color_continuous_scale=px.colors.sequential.Viridis,
+                 template="plotly_dark")
+fig.show()
+
+# Splitting features and targets for classification
+X = health_data.drop(['Anomaly'], axis=1)
+y = health_data['Anomaly']
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Training a Random Forest Classifier
+rf_classifier = RandomForestClassifier(n_estimators=100, random_state=42)
+rf_classifier.fit(X_train, y_train)
+y_pred = rf_classifier.predict(X_test)
+
+# Evaluation
+print("Classification Report:")
+print(classification_report(y_test, y_pred, zero_division=1))  # Set zero_division to 1 to avoid division by zero errors
+print("\nConfusion Matrix:")
+print(confusion_matrix(y_test, y_pred))
+
+# Grid search for parameter tuning
+param_grid = {
+    'n_estimators': [100, 200, 300],
+    'max_depth': [None, 10, 20],
+    'min_samples_split': [2, 5, 10],
+    'min_samples_leaf': [1, 2, 4]
+}
+grid_search = GridSearchCV(estimator=RandomForestClassifier(random_state=42), param_grid=param_grid, cv=5, scoring='accuracy')
+grid_search.fit(X_train, y_train)
+
+print("Best Parameters:", grid_search.best_params_)
+
+# Re-training with best parameters and SMOTE
+X_resampled, y_resampled = SMOTE(random_state=42).fit_resample(X_train, y_train)
+best_rf_classifier = RandomForestClassifier(**grid_search.best_params_)
+best_rf_classifier.fit(X_resampled, y_resampled)
+y_pred_best = best_rf_classifier.predict(X_test)
+
+print("\nClassification Report (Best Model, Balanced):")
+print(classification_report(y_test, y_pred_best, zero_division=1))  # Avoid warnings for 0 division
+print("\nConfusion Matrix (Best Model, Balanced):")
+print(confusion_matrix(y_test, y_pred_best))
+
+
+# Advanced Health Metrics Distribution Visualization
+metrics = ['HeartRate', 'BloodPressureSystolic', 'BloodPressureDiastolic', 'GlucoseLevels', 'ActivityCounts']
+for metric in metrics:
+    fig = px.histogram(health_data, x=metric, marginal="box",
+                       color_discrete_sequence=['indianred'],
+                       title=f"Distribution of {metric}",
+                       template="plotly_dark")
+    fig.show()
+
+# Summary Statistics and Insights
+print("Summary Statistics:")
+print(health_data[['HeartRate', 'BloodPressureSystolic', 'BloodPressureDiastolic', 'GlucoseLevels', 'ActivityCounts']].describe())
